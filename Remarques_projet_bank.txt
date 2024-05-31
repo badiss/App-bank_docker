@@ -1,0 +1,152 @@
+1- Cloner le projet en local: 
+lien : https://github.com/mohamedYoussfi/bank-account-ms-enset-bdcc-app
+
+	- C'est un projet micro-service qui contient deux services: customer-service et account-service: chaque client a un ou plusieurs comptes, par contre chaque compte est associé à un 	  seule client
+	- Pour voir la base de données H2: après le démarrage de service customer: http://localhost:8081/h2-console/ (ajouter dans JDBC URL: jdbc:h2:mem:customer-db)
+            Pour account: http://localhost:8082/h2-console/  (ajouter dans JDBC URL: jdbc:h2:mem:account-db)
+	- On a ajouter swagger pour les deux services: Account et Customer, il suffit ajouter la dépendance dans pom.xml, après taper l'url
+		pour account par exemple: http://localhost:8082/swagger-ui.html
+
+2- Dans le fichier application.properties, on a spring.cloud.config.server.git.uri=https://github.com/mohamedYoussfi/bank-account-config-repo
+cad le config sont dans ce repo.
+--> Pour récupérer tous les fichiers de conf qui sont dans ce repo, on a créer un autre sous module s'appel
+    config-repo et on cloner dedans le contenue de ce repo.
+
+3- Il faut démarrer le module customer-service avant account-service, car au moment de démarrage de customer-service, il y a des services qui sont lancer (création des customer dans CustomerServiceApplication), après le module account-service a besoin de ces données pour exécuter des services (création des comptes bancaires), voir dans AccountServiceApplication
+
+Il faut démarrer: 1-discovery-service, 2- Config-service, 3-Customer-service, 4-Account-service, 5-geteway-service
+
+4- http://localhost:8761/   --> permet d'afficher la liste des services qui sont enregistrés dans discovery
+   http://localhost:9999/application/default  --> pour afficher les config de service config
+   http://localhost:9999/CUSTOMER-SERVICE/default  --> pour afficher les config de service CUSTOMER-SERVICE
+   http://localhost:8888/CUSTOMER-SERVICE/customers   --> permet de retourner la liste des customer créer en passant par le gateway.
+   http://localhost:8081/customers   --> permet de retourner la liste des customer créer sans passant par le gateway (direct)
+   http://localhost:8888/CUSTOMER-SERVICE/testConfig  --> pour tester qu'on récupére bien les configurations qui sont dans le module config-repo
+   http://localhost:8888/ACCOUNT-SERVICE/accounts  --> permet de récupérer la liste des comptes créer.
+
+On remarque que tous les api sont avec le port 8888, et pourtant le port de customer-service 8081 et le port de account-service 8082, mais puisque on est dans l'architecture micro-service, alors il faut passer par le port de geteway qui est 8888.
+Par contre on peut accéder au api des modules sans passer par le geteway avec l'url et le port de module par exp: http://localhost:8081/customers
+
+5- La dépendance Actuator qu'on ajouté dans plusieurs services: permet de générer le monotoring des services
+http://localhost:8888/CUSTOMER-SERVICE/actuator/health  --> permet de svoir l'étit de microservice (par exemple ici le service customer)
+
+Dockerize le projet:
+
+1- discovery-service: A- Utiliser dockerFile avec les commande pour créer et démarrer application
+	- on a créer un file Dockerfile
+	- on a générer un fichier .jar de notre module, avec mvn clean package -DskipTests (clean pour clener le fichier target): le fichier .jar on va l'utiliser dans le Dockerfile
+		COPY target/*.jar app.jar  --> cette ligne pour copier les fichiers .jar sous target dans un fichier app.jar qu'on va exécuter après
+                ENTRYPOINT ["java", "-jar", "app.jar"]  -> cette ligne dans Dockerfile, pour dire à docker d'exécuter le fichier .jar (cad démarrer notre appli)
+	- création de l'image avec docker build . -t my-ebank-discovery-service:v1    (v1 c'est le tag, cad la version), après si je lance docker images, alors je trouve la nouevlle image
+	- créer un conteneur de cette image avec: docker run -p 8761:8761 my-ebank-discovery-service:v1  (il faut mapper les port car le 8761 est le port en local de module et le 2éme 8761          
+          c'est notre choix, pour qu'on arrive à accéder au application à partir de l'exterieur). --> l'application est démarrer et pour le tester:
+          http://192.168.76.3:8761, ou bien on peut taper dans la VM: localhost:8761  (car docker Engine est sur cette VM)
+
+Remarque: Si on a un fichier .jar de notre application, alors pour l'exécuter, il suffit d'aller sous target (ou il ya le .jar) et taper: java -jar nomFichier.jar
+          - Pour démarrer le conteneur avec docker run en arrière plan, il suffit d'ajouter à la commande -d, par exemple docker run -d -p 8761:8761 my-ebank-discovery-service:v1
+	- Pour arréter le conteneur: docker stop id-conteneur
+	- Pour supprimer tous les conteneurs même qui sont en cours d'exécution: docker container rm -f $(docker container ls -aq)
+	- Pour supprimer tous les images: docker image rm -f $(docker image ls -q)
+	- ou bien pour supprimer tous les conteneurs et les images même en cache: docker system prune -a -f
+
+	B-Utiliser le fichier docker-compose: on va automatiser l'application
+          Maintenant au lieu d'utiliser les commandes: docker build et docker run pour créer image et démarrer un conteneur, on va automatiser tous ca à travers docker compose
+	- Cérer le fichier Dockerfile dans le projet discovery-service 
+	- créer le fichier docker-compose.yml dans le racine de l'application
+	- Après on lance docker compose up : pour démarer tous les services qui sont dans le fichier .yml
+Remarque: Dans le fichir docker-compose.yml, on a :
+	- build: ./discovery-service : build permet d'aller dans le projet discovery-service et exécuter le Dockerfile, pour créer une nouvelle image et un conteneur avec tous les service 	  dedans. Reéllement elle va remplacer les deux commandes docker build et docker run sur le module discovery-service
+	- healthcheck: test: [ "CMD", "curl", "-f", "http://localhost:8761/actuator/health" ]: l'attribut healthcheck permet de vérifié si le conteneur est bien démarrer ou non, alors il 	  fait le test avec cette commande: curl (permet d'accèder à un api) vérifié url (cette url retour up/dows) selon situation de conteneur.
+	  Autrement dit, si je lancer l'application discovery, après je tape url: http://localhost:8761/actuator/health  --> résultat {"status":"UP"} ou bien {"status":"DOWN"}
+	- Pour lancer docker, il suffit de taper la commande: docker compose up, et docker compose down pour arrêter docker
+	- Après qu'on je lance dockser compose down: alors le conteneur démarrer est arrêter, donc si on lance docker ps -a ==> pas de container, mais l'image créer toujours existe, 
+          cad si je lance docker images ==> l'image de discovery-service existe
+        - Si je lance docker compose up -d  ==> l'image est créer et le conteneur démarrer mais en arrière plan: cad dans le console deux lignes affichés
+
+2- Config-service: On va refaire les mêmes chose que le discovery-service
+	- Créer le fichier Dockerfile
+	- Générer un fichier .jar avec la commande: mvn clean package -DskipTests
+	- ajouter dans le fichier docker-compose.yml, le nouveau service pour config-service
+Remarque: On sait bien qu'il faut démarer le service discovery avant le service config (car config besoin de discovery), pour cela si on démarre directement avec docker compose up -d, 	  alors y a une erreur car le contenaire de config a démarrer sans attend le démarrage de discovery ===> Pour corriger ce problème:
+	- Il faut ajouter dans la création de service config dans docker-compose.yml, un nouveau variable : depends_on (voir le fichier docker-compose.yml) : cad pour dire que le service 	  config dépend de service discovery et pour étre sur que le service discovery démarrer, on ajoute une condition : service_healthy (de healthcheck pour service discovery)
+
+	- Il faut utiliser la commande: docker compose up -d --build: on utilise --build pour forcer docker a créer une nouvelle image, car si par exemple on a changer le code source et on 	  lance docker sans --build et il ya déjà une image créer de discovery service par exp, alors on va utiliser l'ancienne image pour la création de container (avec l'anien code)
+
+	- Dans le ficher docker-compose.yml, j'ai ajouter dans le service config:   environment: DISCOVERY_SERVICE_URL=http://enset-ebank-discovery-service:8761/eureka
+          car le config-service a besoin de cette configuration qui est dans le module partagé config ou on créer un variable d'environnement globale qui prend valeur avec localhost, hors 	  qu'on utilise docker avec les images et les containers, on peut utiliser l valeur avec localhost, donc on a ajouter un autre valeur pour ce varibale (DISCOVERY_SERVICE_URL)
+          ---> généralement, il faut comprendre que si un contenaire va contecté a un autre contenaire, il faut utiliser localhost, donc il faut utiliser les varibale d'environnement dans 	  le fichier yml avec environment
+
+	- La commande: docker logs nom_contenaire (ou bien num)  --> pour voir le log de contenaire
+
+	- Après le démarrage de docker compose (docker compose up -d --build), normalement les deux images de discovery et de config sont créer et aussi les deux conteneurs sont démarrer, 	  et par suite onn peut tester: http://localhost:8761/   --> permet d'afficher la liste des services qui sont enregistrés dans discovery
+	  http://localhost:9999/application/default  --> pour afficher les config de service config, et le config globale de fichier properties
+
+3- Customer-service: On va refaire les mêmes chose que le discovery-service et config-service
+	- Créer le fichier Dockerfile
+	- Générer un fichier .jar avec la commande: mvn clean package -DskipTests
+	- ajouter dans le fichier docker-compose.yml, le nouveau service pour customer-service
+
+Remarque: - Dans le fichier docker-compose.yml, customer service est dépend de deux autres services: discovery (car il faut que discovery ajoute customer dans sa liste (Register)) et 		    config (car il a besoin que le cnfig service démarre pour récupérer la configuration globale qui est dans config-repo) 
+	  ==> Mais, on sait que le service config dépend déjà de discovery(cad il ne démarre pas jusqu'à le démarrage de discovery), alors pas besoin d'ajouter le dépendance de discovery 	      pour customer, car customer dépend de config et config dépend de discovery déjà
+	  - Customer service est besoin de deux configurations qui sont dans les autres service:
+			1- Il a besoin de config qui est dans application.properties (dans config-repo): 
+			    eureka.client.service-url.defaultZone=${DISCOVERY_SERVICE_URL:http://localhost:8761/eureka}
+			   Pour ce la on a déjà créer la variable globales (comme pour config-service)
+			2- Il a besoin aussi de la configuration qui est dans son fichier application.properties (dans customer-service):
+			  spring.config.import=optional:configserver:${CONFIG_SERVICE_URL:http://localhost:9999}
+			  Pour cela on a créer un nouveau variable globale CONFIG_SERVICE_URL: qui prend la valeur qui est dans docker-compose.yml ou bien localhost
+			  CONFIG_SERVICE=http://enset-ebank-config-service:9999
+			==> Alors dans la déclaration de customer-service dans docker-compose.yml: on a dans environnement deux URL
+	  - J'ai ajouter le ping de url healthy check dans le service confi (dans docker-compose) :
+		    healthcheck:
+      			test: [ "CMD", "curl", "-f", "http://localhost:9999/actuator/health" ]
+		    ==> Cela our vérifier que le service config est déjà démarrer, car on a une dépendance avec customer-service (cad le customer-service attend que le service config 				démarre). C'est la même concepte entre config et discovery
+
+4- account-service: On va refaire les mêmes chose que le discovery-service et config-service et customer
+	- Créer le fichier Dockerfile
+	- Générer un fichier .jar avec la commande: mvn clean package -DskipTests
+	- ajouter dans le fichier docker-compose.yml, le nouveau service pour account-service
+
+Remarque: - Dans le fichier docker-compose.yml, account service est dépend de customer-service (cad il a besoin que customer service démarre avant), pour cela on a ajouter depond_on
+	    a customer-service, et du coup on a ajouter le healthcheck a customer-service
+	  - Pour les variables globales, on a besoin de deux configuration comme dans customer-service, le 1ére est dans application.properties (config-repo) et le 2éme dans 		  	    application.properties (account-service)
+
+5- getway-service: On va refaire les mêmes chose que le discovery-service et config-service et customer-service, ...
+	- Créer le fichier Dockerfile
+	- Générer un fichier .jar avec la commande: mvn clean package -DskipTests
+	- ajouter dans le fichier docker-compose.yml, le nouveau service pour getway-service
+
+Remarque: - Dans le fichier docker-compose.yml, getway service est dépend de discovery-service et config-service, mais puisque config-service est déjà dépend de discovery (cad il a besoin 	    que discovery service démarre avant), pour cela on a ajouter depond_on seulement pour config (pas besoin d'ajouter pour discovery)
+	  - On n'a pas ajouter a account-service healthcheck car pas besoin de vérifier que account-service a déjà démarrer avant le gateway (car le gateway ne dépend pas de account-	     	    service)
+	  - Pour les variables globales, on a besoin de deux configuration comme dans customer-service ou account-service, le 1ére est dans application.properties (config-repo) et le 2éme    	    dans application.properties (gateway-service)
+
+Remarque Générale:
+	- Après le démarrage de docker avec docker compose up -d --build, je peux vérifier que tous les images et les conteneurs sont créers avec les invites de commandes et aussi je peux 	  tapper les urls: (et je peux tester les services à travers le gateway: 8888)
+			- http://localhost:8761/   --> permet d'afficher la liste des services qui sont enregistrés dans discovery
+			- http://localhost:8888/CUSTOMER-SERVICE/customers   --> permet de retourner la liste des customer créer.
+			- http://localhost:8888/ACCOUNT-SERVICE/accounts  --> permet de récupérer la liste des comptes créer.
+
+	- Démarrer l'application, on utiliser les dockerfile pour créer une images et démarrer un conteneur (sans l'utilisation de docker-compose)
+		1- Pour chaque service il faut utiliser les deux commandes pour créer image et contenaire:
+			exp pour le service de discovery: docker build . -t enset-ebank-discovery-service:v1  et docker run -p 8761:8761 enset-ebank-discovery-service:v1
+		2- Dans les fichiers application.properties de quelques service ou il ya des variables globales, il fuat juste le modifier: (j'ai garder les lignes utiliser avec docker-		   compose mais avec un commentaire #)
+			A- Config-repo : eureka.client.service-url.defaultZone=http://192.168.76.3:8761/eureka
+			B- Config-service: eureka.client.service-url.defaultZone=http://192.168.76.3:8761/eureka
+				           spring.cloud.config.server.native.searchLocations=file:/C:/Users/Numeryx/Desktop/Perso Badis/workspace_docker/bank-account-ms-enset-bdcc-						   app/config-repo/bank-account-config-repo
+					   spring.profiles.active=native
+			C- Customer-service: spring.config.import=optional:configserver:http://192.168.76.3:9999
+			D- account-service: spring.config.import=optional:configserver:http://192.168.76.3:9999
+			E- gateway-service: spring.config.import=optional:configserver:http://192.168.76.3:9999
+		3- Pour les tests, j'ai utiliser:
+			http://192.168.76.3:8761/
+			http://192.168.76.3:9999/application/default
+			http://192.168.76.3:9999/actuator/health  --> pour tester que le config service (up/down): même je peux l'utiliser pour les autres services, juste je change port
+
+
+	- Après la liaison du projet Front avec le projet back, cad pour consommer les services et les apis, il y a un problème d'autorisation (problème de corse), alors pour réssoudre ce 	  problème il faut ajouter une configuration dans le fichier application.yml dans le projet gateway: pour autoriser les accès
+
+
+
+    build:
+      context: .
+      dockerfile: C:\Users\Numeryx\Desktop\Perso Badis\workspace_docker\bank-account-ms-enset-bdcc-app\discovery-service\Dockerfile

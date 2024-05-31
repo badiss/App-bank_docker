@@ -1,0 +1,11 @@
+J'ai installé ubunto dans la MV
+login et mdp compte ubunto_VM: badis / 22248493
+adrre ip de MV: 10.0.2.15
+Configurer le réseau : virtual Box -> Configuration -> réseau : j'ai changé le réseau Accès par pont --> maintenant on a la meme adresse ip que la machine Windows
+adrese ip de MV: 192.168.1.87  et adresse ip de Windows 192.168.1.91  --> alors je peux pinger entre les deux
+Après j'ai configurer une autre carte réseau (voir video) et j'ai changer adresse ip:  192.168.76.3
+adresse ip de VM  192.168.76.3 et  adresse ip de Windows 192.168.1.91  --> alors je peux pinger entre les deux
+installer open ssh: pour l'utiliser a conecter sur MV à partir de windows
+installé docker dans la MV (avant il faut installé curl): c'est docker Engine qui est installé sous ubunto
+modifier le fichier docker.service: pour accèder au services docker à travers les api rest.
+Installer docker client dans windows: docker-cli --> pour communiquer avec docker Engine qui est installé sur ubunto par les api rest.

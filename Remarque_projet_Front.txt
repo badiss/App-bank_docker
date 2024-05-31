@@ -1,0 +1,45 @@
+- Dans la même workspace on a créer un nouveau dossier angular-font-end: qui contient le projet angular
+Notre projet est un projet angular 17 standlone: sans module
+
+- J'ai créer un nouveau dossier de services: qui contient des services, par exemple:
+	- CustomersService: ce fichier appel les services de customers
+	- Puisque dans le service on utilise HttpClient, alors il faut importer HttpClientModule, sauf que on n'a pas un module, et selon le nouveai principe 
+          de standalone il faut faire les imports dans le component, -----> mais sa marche pas 
+		--> sol: il faut importer:  importProvidersFrom(HttpClientModule),  dans le fichier app.config.ts
+
+- Les appels des services (apis) entre le projet front et la partie back sa marche pas, il y a un souci de cors, alors pour ressoudre ce problème, il faut ajouter l'autorisation dans le gateway (dans le fichier application.yml)
+
+
+Remarque:
+	- A partir de angular 14, l'architecture de angular n'est plus basée sur les modules: les composansts sont standalone
+	 ng new nom_projet --directory=./ --no-standalone      ==> créer un projet avec un module (app.module)
+	 ng new nom_projet --directory=./     ==> créer un projet sans modules
+	- La tendance maintenant avec angular est de travailler avec standalone (sans module), car l'idée générale est d'avoir aussi l'architectire micro frontend côté front aussi, pour     	 faire la liaison entre le service côté back et le service côte front
+	- Avec les applications angular standalone: tous les imports sont dans le components et non pas dans le module (car on n'a pas de module)
+	- npm run --> remplcae ng : car le ng est un script: donc ng serve == npm run serve
+
+
+Création image docker pour le projet Front
+
+	- Comme en java il faut générer un fichier .jar, par contre en angular c'est pas .jar mais un fichier dist, et pour le génerer il faut lancer la commande: ng build
+	  --> Alors pour deployer une application angular, il suffit de prendre ce fichier et l'ajouter dans un serveur web.
+	- Fichier Dockerfile:
+		- FROM node:latest as build
+		- WORKDIR /usr/local/app   --> créer un fichier sous cet path
+		- COPY ./ /usr/local/app  --> copier ./ (cad tous le projet angular) dans le fichier que j'ai déjà créer
+		- RUN npm install : après dans ce fichier céer je lance cette commande pour installé les dépendances
+		- RUN npm run build : après je build le projet avec cette commande pour générer le fichier du projet qu'on va ajouter dans le serveur web après
+		- FROM nginx:latest : le serveur web
+		- COPY --from=build /usr/local/app/dist/angular-front-end/browser /usr/share/nginx/html  : on va copier le contenue de dossier générer sous dist vers usr/share...
+	- Construire l'image par commande on utilisant le Dockerfile (sans utiliser docker compose): Alors il faut lancer la commande
+			- docker build . -t ang-cust-app:v1
+	- Après démarrer un conteneur à partir de l'image déjà créer: docker run -d -p 80:80 ang-cust-app:v1
+	- Pour le tester: http://192.168.76.3/  ou bien dans ubunto (MV), je tape seulement localhost
+
+	- Ajouter dans le fichier docker-compose.yml: le service d'angular (comme les micro-services java):
+	  Pour le tester: j'ai supprimer les services java dans le fichier docker-compose.yml et j'ai garder qur le service de front, après j'ai lancer la commande:
+		docker compose up -d --build   ---> une nouvelle image créer et le contenaire front démarrer, et par suite on peux taper:  http://192.168.76.3/
+	
+
+
+
